@@ -1,0 +1,33 @@
+import sys
+from core.logger import logger
+
+class BorderSecurityException(Exception):
+    def __init__(self,error_message,error_details:sys):
+        self.error_message = error_message
+        _,_,exc_tb = error_details.exc_info()
+        
+        self.lineno=exc_tb.tb_lineno
+        self.file_name=exc_tb.tb_frame.f_code.co_filename 
+    
+    def __str__(self):
+        """
+        Return a readable string representation of the error.
+        """
+        return "Error occurred in python script name [{0}] line number [{1}] error message [{2}]".format(
+            self.file_name, self.lineno, str(self.error_message)
+        )
+
+
+"""
+
+Explanation:
+
+exc_info() → returns (type, value, traceback).
+
+exc_tb.tb_lineno → line number where exception occurred.
+
+exc_tb.tb_frame.f_code.co_filename → filename where exception occurred.
+
+__str__ → formats the exception message in a readable way.
+
+"""
