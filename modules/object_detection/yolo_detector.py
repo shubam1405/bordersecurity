@@ -45,7 +45,7 @@ def run_object_detection():
             continue
 
         # Run YOLO inference
-        results = model(image, conf=0.4, verbose=False)
+        results = model(image, conf=0.5, verbose=False)
 
         for result in results:
             for box in result.boxes:
