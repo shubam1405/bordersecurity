@@ -3,3 +3,6 @@ opencv-python
 imutils
 matplotlib
 ultralytics
+deepface 
+tf-keras
+scikit-learn
