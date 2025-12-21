@@ -8,7 +8,7 @@ from modules.alarm.alarm import trigger_alarm
 ROI_DIR = "data/processed/roi"
 DET_DIR = "data/processed/detection"
 
-CONF_TH = 0.5
+CONF_TH = 0.75
 
 # classes we care about explicitly
 ANIMALS = {"cat", "dog", "cow", "horse", "sheep", "bird"}

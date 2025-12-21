@@ -16,3 +16,5 @@ logs
 yolov8n.pt 
 modules/alarm
 modules/video_capture
+
+alerts

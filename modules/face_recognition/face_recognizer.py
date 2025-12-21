@@ -7,7 +7,7 @@ from core.logger import logger
 
 FACE_DATABASE_DIR = "data/face_database"
 FACES_DIR = "data/processed/faces"
-THRESHOLD = 0.35
+THRESHOLD = 0.75
 
 DATABASE = None
 
