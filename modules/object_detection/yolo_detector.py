@@ -1,69 +1,76 @@
 import os
 import cv2
+import shutil
 from ultralytics import YOLO
 from core.logger import logger
+from modules.alarm.alarm import trigger_alarm
 
-# ---------------- PATHS ----------------
-ROI_DIR = "data/processed/roi"          # Phase 1 output
-OUTPUT_DIR = "data/processed/detections"
-MODEL_PATH = "models/yolov8/yolov8n.pt"
+ROI_DIR = "data/processed/roi"
+DET_DIR = "data/processed/detection"
 
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+CONF_TH = 0.5
 
-# ---------------- LOAD YOLO MODEL ----------------
-model = YOLO(MODEL_PATH)
+# classes we care about explicitly
+ANIMALS = {"cat", "dog", "cow", "horse", "sheep", "bird"}
 
-# COCO classes we care about
-VALID_CLASSES = [
-    "person",
-    "car", "bus", "truck", "motorcycle",
-    "dog", "cat", "cow", "horse", "sheep", "bird",
-    "laptop", "tv", "cell phone"
-]
+def ensure_dirs():
+    for d in ["person", "cat", "dog", "cow", "other"]:
+        os.makedirs(os.path.join(DET_DIR, d), exist_ok=True)
 
-# ---------------- MAIN FUNCTION ----------------
 def run_object_detection():
-    print("Running Phase 2 – Object Detection")
+    ensure_dirs()
+    logger.info("Running Phase 2 – Object Detection")
 
-    for img_name in os.listdir(ROI_DIR):
-        img_path = os.path.join(ROI_DIR, img_name)
+    model = YOLO("yolov8n.pt")
+    human_found = False
 
-        # Skip directories
-        if not os.path.isfile(img_path):
+    for name in os.listdir(ROI_DIR):
+        path = os.path.join(ROI_DIR, name)
+
+        if not os.path.exists(path):
             continue
 
-        # Skip non-image files
-        if not img_name.lower().endswith((".jpg", ".jpeg", ".png")):
+        img = cv2.imread(path)
+        if img is None:
             continue
 
-        # Read image safely
-        image = cv2.imread(img_path)
+        results = model(img, verbose=False)
 
-        # Skip corrupted / empty images
-        if image is None:
-            logger.warning(f"Skipping unreadable file: {img_name}")
-            continue
+        detected_any = False
 
-        # Run YOLO inference
-        results = model(image, conf=0.5, verbose=False)
+        for r in results:
+            for box in r.boxes:
+                cls = int(box.cls[0])
+                conf = float(box.conf[0])
+                label = model.names[cls]
 
-        for result in results:
-            for box in result.boxes:
-                cls_id = int(box.cls[0])
-                label = model.names[cls_id]
-                confidence = float(box.conf[0])
+                if conf < CONF_TH:
+                    continue
 
-                if label in VALID_CLASSES:
-                    logger.info(
-                        f"Detected {label} ({confidence:.2f}) in {img_name}"
-                    )
+                detected_any = True
 
-                    save_path = os.path.join(
-                        OUTPUT_DIR, f"{label}_{img_name}"
-                    )
-                    cv2.imwrite(save_path, image)
+                # 🧍 PERSON
+                if label == "person":
+                    save_path = os.path.join(DET_DIR, "person", name)
+                    shutil.copy(path, save_path)
+                    logger.critical(f"🚨 PERSON DETECTED ({conf:.2f}) → {name}")
+                    trigger_alarm(img)
+                    human_found = True
 
+                # 🐕 ANIMALS
+                elif label in ANIMALS:
+                    save_path = os.path.join(DET_DIR, label, name)
+                    shutil.copy(path, save_path)
+                    logger.info(f"Animal detected ({label})")
 
-# ---------------- RUN ----------------
-if __name__ == "__main__":
-    run_object_detection()
+                # 📦 OTHER OBJECTS
+                else:
+                    save_path = os.path.join(DET_DIR, "other", name)
+                    shutil.copy(path, save_path)
+                    logger.info(f"Object detected ({label})")
+
+        # if YOLO saw nothing at all
+        if not detected_any:
+            shutil.copy(path, os.path.join(DET_DIR, "other", name))
+
+    return human_found

@@ -6,3 +6,4 @@ ultralytics
 deepface 
 tf-keras
 scikit-learn
+playsound==1.2.2

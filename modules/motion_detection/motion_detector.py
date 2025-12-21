@@ -1,94 +1,84 @@
 import cv2
 import time
 import os
-import sys
 from core.logger import logger
-from core.exception import BorderSecurityException
+
+VIDEO_DIR = "data/raw/chunks"
+ROI_DIR = "data/processed/roi"
+
+os.makedirs(VIDEO_DIR, exist_ok=True)
+os.makedirs(ROI_DIR, exist_ok=True)
+
 
 def run_motion_detection():
-    try:
-        logger.info("Starting motion detection module")
+    cap = cv2.VideoCapture(0)
+    bg = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=40)
 
-        roi_dir = "data/processed/roi"
-        os.makedirs(roi_dir, exist_ok=True)
+    logger.info("🔍 CONTINUOUS MONITORING STARTED (Ctrl+C to stop)")
 
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened():
-            raise Exception("Camera not accessible")
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-        bg_subtractor = cv2.createBackgroundSubtractorMOG2(
-            history=500,
-            varThreshold=50,
-            detectShadows=False
-        )
+        fg = bg.apply(frame)
+        motion_area = cv2.countNonZero(fg)
 
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
+        if motion_area > 5000:
+            logger.info("Motion detected → Recording 5s")
+            record_and_extract_roi(cap)
+            return True  # 🔑 tells main.py motion happened
 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            fg_mask = bg_subtractor.apply(gray)
+        cv2.waitKey(1)
 
-            # 🔧 Noise removal + region merging
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-            fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
-            fg_mask = cv2.dilate(fg_mask, kernel, iterations=2)
 
-            contours, _ = cv2.findContours(
-                fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
+def record_and_extract_roi(cap):
+    timestamp = int(time.time())
+    video_path = f"{VIDEO_DIR}/motion_{timestamp}.mp4"
 
-            valid_boxes = []
+    fps = 20
+    h, w, _ = cap.read()[1].shape
+    out = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
 
-            for cnt in contours:
-                area = cv2.contourArea(cnt)
-                if area < 3000:
-                    continue
+    start = time.time()
+    frames = []
 
-                x, y, w, h = cv2.boundingRect(cnt)
+    while time.time() - start < 5:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        out.write(frame)
+        frames.append(frame)
 
-                # Optional aspect ratio filter
-                if h < 80 or w < 80:
-                    continue
+    out.release()
 
-                valid_boxes.append((x, y, w, h))
+    extract_big_roi(frames)
 
-            # 🧠 Merge all boxes into ONE (person-level ROI)
-            if valid_boxes:
-                x_min = min(x for x, y, w, h in valid_boxes)
-                y_min = min(y for x, y, w, h in valid_boxes)
-                x_max = max(x + w for x, y, w, h in valid_boxes)
-                y_max = max(y + h for x, y, w, h in valid_boxes)
 
-                roi = frame[y_min:y_max, x_min:x_max]
+def extract_big_roi(frames):
+    bg = cv2.createBackgroundSubtractorMOG2(history=200, varThreshold=30)
+    logger.info("Extracting BIG ROI from recorded video")
 
-                timestamp = int(time.time() * 1000)
-                roi_path = os.path.join(roi_dir, f"roi_{timestamp}.jpg")
-                cv2.imwrite(roi_path, roi)
+    idx = 0
+    for frame in frames:
+        fg = bg.apply(frame)
+        contours, _ = cv2.findContours(fg, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-                logger.info(f"Merged ROI saved at {roi_path}")
+        if not contours:
+            continue
 
-                cv2.rectangle(
-                    frame,
-                    (x_min, y_min),
-                    (x_max, y_max),
-                    (0, 255, 0),
-                    2
-                )
+        cnt = max(contours, key=cv2.contourArea)
+        if cv2.contourArea(cnt) < 8000:
+            continue
 
-            cv2.imshow("Motion Detection", frame)
-            cv2.imshow("Foreground Mask", fg_mask)
+        x, y, w, h = cv2.boundingRect(cnt)
+        roi = frame[y:y+h, x:x+w]
 
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+        if roi.size == 0:
+            continue
 
-        cap.release()
-        cv2.destroyAllWindows()
+        path = f"{ROI_DIR}/roi_{idx}.jpg"
+        cv2.imwrite(path, roi)
+        idx += 1
 
-    except Exception as e:
-        logger.error("Error in motion detection")
-        raise BorderSecurityException(e, sys)
-
-if __name__ == "__main__":
-    run_motion_detection()
+    logger.info("BIG ROI extraction completed")
