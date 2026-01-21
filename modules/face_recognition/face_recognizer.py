@@ -9,7 +9,8 @@ FACE_DATABASE_DIR = "data/face_database"
 FACES_DIR = "data/processed/faces"
 THRESHOLD = 0.75
 
-DATABASE = None
+# ================= GLOBAL CACHE =================
+DATABASE = None   # loaded ONCE and reused
 
 
 def cosine_similarity(a, b):
@@ -30,6 +31,10 @@ def get_face_embedding(img):
 
 def build_face_database():
     database = []
+
+    if not os.path.exists(FACE_DATABASE_DIR):
+        logger.warning("Face database directory not found")
+        return database
 
     for person in os.listdir(FACE_DATABASE_DIR):
         person_dir = os.path.join(FACE_DATABASE_DIR, person)
@@ -54,28 +59,48 @@ def build_face_database():
 
             try:
                 embeddings.append(get_face_embedding(img))
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Embedding failed for {file}: {e}")
 
         if embeddings:
-            database.append({"info": info, "embeddings": embeddings})
+            database.append({
+                "info": info,
+                "embeddings": embeddings
+            })
             logger.info(f"Loaded embeddings for {info['name']}")
 
     logger.info(f"Known identities loaded: {len(database)}")
     return database
 
 
+# ================= INITIALIZER =================
+def initialize_face_database():
+    """
+    Call this ONCE at program startup
+    """
+    global DATABASE
+
+    if DATABASE is None:
+        logger.info("Initializing face database (one-time)")
+        DATABASE = build_face_database()
+    else:
+        logger.info("Face database already initialized")
+
+
+# ================= RECOGNITION =================
 def recognize_faces():
     global DATABASE
 
-    logger.info("Starting Face Recognition")
-
     if DATABASE is None:
-        DATABASE = build_face_database()
+        raise RuntimeError(
+            "Face database not initialized. Call initialize_face_database() first."
+        )
 
-    if not os.listdir(FACES_DIR):
+    if not os.path.exists(FACES_DIR) or not os.listdir(FACES_DIR):
         logger.warning("No extracted faces to recognize")
         return
+
+    logger.info("Starting Face Recognition")
 
     for face_file in os.listdir(FACES_DIR):
         face = cv2.imread(os.path.join(FACES_DIR, face_file))
@@ -84,7 +109,8 @@ def recognize_faces():
 
         try:
             query = get_face_embedding(face)
-        except:
+        except Exception as e:
+            logger.warning(f"Embedding failed for {face_file}: {e}")
             continue
 
         best_score = 0

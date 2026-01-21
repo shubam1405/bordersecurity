@@ -8,9 +8,8 @@ from modules.alarm.alarm import trigger_alarm
 ROI_DIR = "data/processed/roi"
 DET_DIR = "data/processed/detection"
 
-CONF_TH = 0.75
+CONF_TH = 0.85
 
-# classes we care about explicitly
 ANIMALS = {"cat", "dog", "cow", "horse", "sheep", "bird"}
 
 def ensure_dirs():
@@ -18,11 +17,21 @@ def ensure_dirs():
         os.makedirs(os.path.join(DET_DIR, d), exist_ok=True)
 
 def run_object_detection():
+    """
+    Phase 2 – Object Detection
+    Returns:
+        {
+            "threat_found": bool,
+            "person_found": bool
+        }
+    """
     ensure_dirs()
     logger.info("Running Phase 2 – Object Detection")
 
     model = YOLO("yolov8n.pt")
-    human_found = False
+
+    threat_found = False
+    person_found = False
 
     for name in os.listdir(ROI_DIR):
         path = os.path.join(ROI_DIR, name)
@@ -35,10 +44,12 @@ def run_object_detection():
             continue
 
         results = model(img, verbose=False)
-
         detected_any = False
 
         for r in results:
+            if r.boxes is None:
+                continue
+
             for box in r.boxes:
                 cls = int(box.cls[0])
                 conf = float(box.conf[0])
@@ -49,15 +60,18 @@ def run_object_detection():
 
                 detected_any = True
 
-                # 🧍 PERSON
+                # 🧍 PERSON → THREAT
                 if label == "person":
                     save_path = os.path.join(DET_DIR, "person", name)
                     shutil.copy(path, save_path)
+
                     logger.critical(f"🚨 PERSON DETECTED ({conf:.2f}) → {name}")
                     trigger_alarm(img)
-                    human_found = True
 
-                # 🐕 ANIMALS
+                    threat_found = True
+                    person_found = True
+
+                # 🐕 ANIMALS → NOT A THREAT
                 elif label in ANIMALS:
                     save_path = os.path.join(DET_DIR, label, name)
                     shutil.copy(path, save_path)
@@ -69,8 +83,11 @@ def run_object_detection():
                     shutil.copy(path, save_path)
                     logger.info(f"Object detected ({label})")
 
-        # if YOLO saw nothing at all
+        # Nothing detected at all
         if not detected_any:
             shutil.copy(path, os.path.join(DET_DIR, "other", name))
 
-    return human_found
+    return {
+        "threat_found": threat_found,
+        "person_found": person_found
+    }

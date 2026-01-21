@@ -1,0 +1,15 @@
+{
+    "event": "INTRUSION",
+    "timestamp": "2025-12-23T12:02:10.523569",
+    "video": "evidence.avi",
+    "snapshot": "snapshot.jpg",
+    "label": "person",
+    "confidence": 0.9086399674415588,
+    "roi": {
+        "x1": 100,
+        "y1": 100,
+        "x2": 540,
+        "y2": 380
+    },
+    "source": "Live Camera"
+}

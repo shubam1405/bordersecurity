@@ -7,3 +7,5 @@ deepface
 tf-keras
 scikit-learn
 playsound==1.2.2
+streamlit
+simpleaudio
