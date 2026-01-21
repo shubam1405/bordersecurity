@@ -18,3 +18,5 @@ modules/alarm
 modules/video_capture
 
 alerts
+demo_videos/
+*.mp4
